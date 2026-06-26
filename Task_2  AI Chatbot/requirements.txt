@@ -1,0 +1,13 @@
+# Install all these with:  pip install -r requirements.txt
+flask==3.0.3
+flask-cors==4.0.1
+python-dotenv==1.0.1
+requests==2.32.3
+groq==1.4.0
+
+# ── NLP Libraries ──
+nltk>=3.8
+spacy>=3.7
+textblob>=0.18
+langdetect>=1.0.9
+rake-nltk>=1.0.6

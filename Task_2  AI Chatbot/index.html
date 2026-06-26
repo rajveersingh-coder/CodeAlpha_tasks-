@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  NexBot Frontend (index.html)
+  Works WITH the Flask backend (app.py)
+
+  HOW IT CONNECTS:
+  - All API calls go to http://localhost:5000/api/message  (your Flask server)
+  - Flask server calls the upstream API using your secret API key
+  - Flask server runs NLP analysis on messages and returns metadata
+  - Never calls the upstream API directly from this file!
+-->
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NexBot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── Design Tokens ── */
+    :root {
+      --bg:          #0F0F13;
+      --surface:     #17171E;
+      --surface2:    #1E1E28;
+      --border:      #2A2A38;
+      --accent:      #7C6FF7;
+      --accent2:     #A78BFA;
+      --accent-glow: rgba(124,111,247,0.18);
+      --green:       #34D399;
+      --red:         #F87171;
+      --amber:       #FBBF24;
+      --text:        #E8E8F0;
+      --muted:       #6B6B80;
+      --font:        'Inter', sans-serif;
+      --mono:        'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top Bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .topbar-logo {
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .topbar-title { font-size: 15px; font-weight: 600; flex: 1; }
+
+    /* ── Server status indicator ── */
+    .server-status {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--muted);
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.online  { background: var(--green); animation: pulse 2s infinite; }
+    .status-dot.offline { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .topbar-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all 0.2s;
+    }
+    .topbar-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* ── Layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; flex-shrink: 0;
+    }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-label {
+      font-size: 10px; font-weight: 600;
+      color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 10px;
+    }
+
+    /* Persona buttons */
+    .persona-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .persona-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); padding: 8px 4px; border-radius: 8px;
+      font-size: 11px; cursor: pointer; text-align: center;
+      line-height: 1.4; font-family: var(--font); transition: all 0.2s;
+    }
+    .persona-btn:hover { border-color: var(--accent); color: var(--text); }
+    .persona-btn.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent2); }
+    .persona-icon { font-size: 18px; display: block; margin-bottom: 3px; }
+
+    /* Feature toggles */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .toggle-label { font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 20px; cursor: pointer; transition: background 0.2s; }
+    .toggle-slider::before { content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; background:#fff; border-radius:50%; transition:transform 0.2s; }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+    /* Memory + stats */
+    .memory-list { font-size: 11px; color: var(--muted); line-height: 1.7; max-height: 80px; overflow-y: auto; }
+    .memory-count { font-size: 10px; color: var(--accent2); margin-top: 5px; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .stat-val { color: var(--accent2); font-weight: 600; }
+
+    /* ── NLP Sidebar Section ── */
+    .nlp-stat-item { margin-bottom: 8px; }
+    .nlp-stat-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+    .nlp-sentiment-bar {
+      height: 6px; border-radius: 3px; background: var(--border);
+      overflow: hidden; position: relative;
+    }
+    .nlp-sentiment-fill {
+      height: 100%; border-radius: 3px; transition: width 0.4s ease, background 0.4s ease;
+    }
+    .nlp-entity-list, .nlp-keyword-list {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px;
+    }
+    .nlp-entity-chip {
+      font-size: 9px; padding: 2px 7px; border-radius: 10px;
+      border: 1px solid rgba(124,111,247,0.25);
+      background: rgba(124,111,247,0.08); color: var(--accent2);
+    }
+    .nlp-entity-chip[data-type="PERSON"] { background: rgba(96,165,250,0.1); color: #60A5FA; border-color: rgba(96,165,250,0.25); }
+    .nlp-entity-chip[data-type="ORG"] { background: rgba(167,139,250,0.1); color: #A78BFA; border-color: rgba(167,139,250,0.25); }
+    .nlp-entity-chip[data-type="GPE"], .nlp-entity-chip[data-type="LOC"] { background: rgba(52,211,153,0.1); color: #34D399; border-color: rgba(52,211,153,0.25); }
+    .nlp-entity-chip[data-type="DATE"], .nlp-entity-chip[data-type="TIME"] { background: rgba(251,191,36,0.1); color: #FBBF24; border-color: rgba(251,191,36,0.25); }
+    .nlp-keyword-chip {
+      font-size: 9px; padding: 2px 7px; border-radius: 10px;
+      background: rgba(52,211,153,0.08); color: var(--green);
+      border: 1px solid rgba(52,211,153,0.2);
+    }
+    .nlp-no-data { font-size: 10px; color: var(--muted); font-style: italic; }
+
+    /* ── Chat Area ── */
+    .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #messages {
+      flex: 1; overflow-y: auto; padding: 20px 24px;
+      display: flex; flex-direction: column; gap: 16px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Welcome screen */
+    .welcome {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; padding: 40px;
+      text-align: center; color: var(--muted);
+    }
+    .welcome-emoji { font-size: 48px; }
+    .welcome h2 { font-size: 20px; font-weight: 600; color: var(--text); }
+    .welcome p { font-size: 13px; max-width: 340px; line-height: 1.7; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+    .chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 14px; font-size: 12px;
+      color: var(--text); cursor: pointer; font-family: var(--font);
+      transition: all 0.2s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* Messages */
+    .msg { display: flex; gap: 10px; max-width: 800px; width: 100%; }
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.bot  { align-self: flex-start; }
+
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    .avatar.bot-av  { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+    .avatar.user-av { background: var(--surface2); border: 1px solid var(--border); }
+
+    .msg-content { max-width: calc(100% - 44px); }
+
+    .bubble {
+      padding: 12px 16px; border-radius: 14px;
+      font-size: 13.5px; line-height: 1.75; border: 1px solid var(--border);
+    }
+    .msg.user .bubble { background: #25253A; border-top-right-radius: 4px; }
+    .msg.bot  .bubble { background: var(--surface2); border-top-left-radius: 4px; }
+
+    .bubble code { font-family: var(--mono); font-size: 12px; background: rgba(124,111,247,0.12); color: var(--accent2); padding: 2px 6px; border-radius: 4px; }
+    .bubble pre { background: #0D0D15; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 8px 0; overflow-x: auto; }
+    .bubble pre code { background: none; padding: 0; color: var(--green); font-size: 12px; }
+    .bubble strong { color: var(--text); }
+    .bubble p { margin-bottom: 6px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble ul { padding-left: 18px; margin: 6px 0; }
+    .bubble li { margin-bottom: 3px; }
+
+    .msg-meta { font-size: 10px; color: var(--muted); margin-top: 5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .persona-tag { background: var(--accent-glow); color: var(--accent2); padding: 1px 8px; border-radius: 10px; font-size: 10px; border: 1px solid rgba(124,111,247,0.2); }
+
+    /* ── NLP Message Badges ── */
+    .nlp-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+
+    .sentiment-badge {
+      font-size: 9px; padding: 2px 8px; border-radius: 10px;
+      display: inline-flex; align-items: center; gap: 3px;
+      cursor: default; position: relative;
+    }
+    .sentiment-badge.positive { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+    .sentiment-badge.negative { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+    .sentiment-badge.neutral  { background: rgba(107,107,128,0.12); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
+
+    .sentiment-badge .tooltip {
+      display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 8px; font-size: 9px; white-space: nowrap; z-index: 10;
+      color: var(--text);
+    }
+    .sentiment-badge:hover .tooltip { display: block; }
+
+    .lang-badge {
+      font-size: 9px; padding: 2px 6px; border-radius: 10px;
+      background: rgba(251,191,36,0.1); color: var(--amber);
+      border: 1px solid rgba(251,191,36,0.2);
+      text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em;
+    }
+
+    .nlp-keyword-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .kw-tag {
+      font-size: 9px; padding: 2px 7px; border-radius: 10px;
+      background: rgba(124,111,247,0.08); color: var(--accent2);
+      border: 1px solid rgba(124,111,247,0.18);
+    }
+
+    .nlp-entity-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .ent-tag {
+      font-size: 9px; padding: 2px 7px; border-radius: 10px;
+      display: inline-flex; align-items: center; gap: 3px;
+      cursor: default; position: relative;
+    }
+    .ent-tag[data-type="PERSON"] { background: rgba(96,165,250,0.1); color: #60A5FA; border: 1px solid rgba(96,165,250,0.2); }
+    .ent-tag[data-type="ORG"] { background: rgba(167,139,250,0.1); color: #A78BFA; border: 1px solid rgba(167,139,250,0.2); }
+    .ent-tag[data-type="GPE"], .ent-tag[data-type="LOC"] { background: rgba(52,211,153,0.1); color: #34D399; border: 1px solid rgba(52,211,153,0.2); }
+    .ent-tag[data-type="DATE"], .ent-tag[data-type="TIME"] { background: rgba(251,191,36,0.1); color: #FBBF24; border: 1px solid rgba(251,191,36,0.2); }
+    .ent-tag[data-type="PRODUCT"], .ent-tag[data-type="EVENT"], .ent-tag[data-type="WORK_OF_ART"] { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
+    .ent-tag:not([data-type]) { background: rgba(107,107,128,0.1); color: var(--muted); border: 1px solid rgba(107,107,128,0.2); }
+
+    .ent-tag .tooltip {
+      display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 8px; font-size: 9px; white-space: nowrap; z-index: 10;
+      color: var(--text);
+    }
+    .ent-tag:hover .tooltip { display: block; }
+
+    /* Typing dots */
+    .typing-bubble { display: flex; align-items: center; gap: 5px; padding: 14px 18px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+    /* ── Input Bar ── */
+    .input-bar {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column;
+      gap: 10px; flex-shrink: 0;
+    }
+    .input-row { display: flex; gap: 10px; align-items: flex-end; }
+    .input-wrap {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; display: flex; align-items: flex-end;
+      gap: 8px; padding: 10px 14px; transition: border-color 0.2s;
+    }
+    .input-wrap:focus-within { border-color: var(--accent); }
+    #userInput {
+      flex: 1; background: none; border: none; outline: none;
+      color: var(--text); font-family: var(--font); font-size: 13.5px;
+      resize: none; max-height: 120px; line-height: 1.5;
+    }
+    #userInput::placeholder { color: var(--muted); }
+    .icon-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 2px; transition: color 0.2s; }
+    .icon-btn:hover { color: var(--accent2); }
+    .icon-btn.recording { color: var(--red); }
+    .send-btn {
+      background: var(--accent); color: white; border: none;
+      border-radius: 10px; width: 42px; height: 42px; font-size: 18px;
+      cursor: pointer; transition: all 0.2s; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0;
+      font-family: var(--font);
+    }
+    .send-btn:hover:not(:disabled) { background: var(--accent2); transform: scale(1.05); }
+    .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+    .hint-chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .hint-chip {
+      font-size: 11px; color: var(--muted); background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 3px 10px; cursor: pointer; font-family: var(--font); transition: all 0.2s;
+    }
+    .hint-chip:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Doc upload */
+    .upload-label {
+      display: block; border: 1px dashed var(--border); border-radius: 8px;
+      padding: 10px; text-align: center; cursor: pointer; font-size: 11px;
+      color: var(--muted); transition: all 0.2s;
+    }
+    .upload-label:hover { border-color: var(--accent); color: var(--accent2); }
+    .upload-label input { display: none; }
+    .doc-badge {
+      display: none; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 8px; margin-top: 6px;
+      font-size: 11px; color: var(--text);
+    }
+    .doc-remove { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 14px; }
+    .doc-remove:hover { color: var(--red); }
+
+    /* Error message style */
+    .error-bubble { background: rgba(248,113,113,0.1) !important; border-color: rgba(248,113,113,0.3) !important; }
+
+    /* ── NLP Summary Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      z-index: 1000; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 24px; width: 90%; max-width: 560px;
+      max-height: 70vh; overflow-y: auto; position: relative;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .modal-close {
+      position: absolute; top: 14px; right: 16px;
+      background: none; border: none; color: var(--muted); font-size: 18px;
+      cursor: pointer; transition: color 0.2s;
+    }
+    .modal-close:hover { color: var(--red); }
+    .modal-body { font-size: 13px; line-height: 1.8; color: var(--text); }
+    .modal-body .summary-text {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px; margin-top: 10px;
+      white-space: pre-wrap; font-size: 12.5px; line-height: 1.7;
+    }
+    .modal-loading { color: var(--muted); font-style: italic; }
+
+    @media(max-width:640px) { .sidebar { display: none; } }
+  </style>
+</head>
+<body>
+
+<!-- ── TOP BAR ── -->
+<div class="topbar">
+  <div class="topbar-logo">🤖</div>
+  <span class="topbar-title">NexBot</span>
+  <div class="server-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Checking server…</span>
+  </div>
+  <button class="topbar-btn" onclick="openNlpSummary()" title="NLP Conversation Summary">🧪 NLP Summary</button>
+  <button class="topbar-btn" onclick="clearChat()">🗑 Clear</button>
+</div>
+
+<div class="main">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+
+    <!-- Persona -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">🎭 Persona</div>
+      <div class="persona-grid">
+        <button class="persona-btn active" id="p-assistant" onclick="setPersona('assistant','🤖','General Assistant','You are a helpful, friendly AI assistant named NexBot. Give clear, accurate, concise answers.')">
+          <span class="persona-icon">🤖</span>General
+        </button>
+        <button class="persona-btn" id="p-teacher" onclick="setPersona('teacher','👨‍🏫','Python Teacher','You are an expert Python and AI/ML teacher. Explain concepts with simple language, examples, and working code snippets with comments.')">
+          <span class="persona-icon">👨‍🏫</span>Teacher
+        </button>
+        <button class="persona-btn" id="p-coder" onclick="setPersona('coder','💻','Code Expert','You are an expert software engineer. Provide clean, well-commented code in markdown code blocks. Explain what each part does.')">
+          <span class="persona-icon">💻</span>Coder
+        </button>
+        <button class="persona-btn" id="p-creative" onclick="setPersona('creative','🎨','Creative Writer','You are a creative writing assistant. Help with storytelling, brainstorming, scripts, and imaginative content.')">
+          <span class="persona-icon">🎨</span>Creative
+        </button>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">⚙️ Features</div>
+      <div class="toggle-row">
+        <span class="toggle-label">🧠 Memory</span>
+        <label class="toggle"><input type="checkbox" id="t-memory" checked/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">🔍 Web Context</span>
+        <label class="toggle"><input type="checkbox" id="t-web"/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">🔊 Voice Output</span>
+        <label class="toggle"><input type="checkbox" id="t-voice"/><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">📄 Doc Mode</span>
+        <label class="toggle"><input type="checkbox" id="t-doc" onchange="toggleDocSection()"/><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <!-- Doc upload (hidden until toggled) -->
+    <div class="sidebar-section" id="doc-section" style="display:none;">
+      <div class="sidebar-label">📁 Document</div>
+      <label class="upload-label">
+        <input type="file" id="fileInput" accept=".txt,.md,.csv,.json,.py,.html" onchange="handleFile(event)"/>
+        📁 Click to upload<br/><span style="font-size:10px;opacity:0.7">.txt .md .csv .py</span>
+      </label>
+      <div class="doc-badge" id="doc-badge">
+        <span>📄</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="doc-name"></span>
+        <span class="doc-remove" onclick="removeDoc()">✕</span>
+      </div>
+    </div>
+
+    <!-- Memory viewer -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">🧠 Memory</div>
+      <div class="memory-list" id="memory-display">No messages yet.</div>
+      <div class="memory-count" id="memory-count">0 / 20 turns</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">📊 Stats</div>
+      <div class="stat-row"><span>Messages</span><span class="stat-val" id="s-msgs">0</span></div>
+      <div class="stat-row"><span>Persona</span><span class="stat-val" id="s-persona">General</span></div>
+      <div class="stat-row"><span>Tokens</span><span class="stat-val" id="s-tokens">0</span></div>
+    </div>
+
+    <!-- ── NLP Analysis Sidebar ── -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">🧪 NLP Analysis</div>
+
+      <div class="nlp-stat-item">
+        <div class="nlp-stat-label">Avg Sentiment</div>
+        <div class="nlp-sentiment-bar">
+          <div class="nlp-sentiment-fill" id="nlp-avg-sentiment" style="width:50%;background:var(--muted);"></div>
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;" id="nlp-avg-sentiment-text">No data</div>
+      </div>
+
+      <div class="nlp-stat-item">
+        <div class="nlp-stat-label">Top Entities</div>
+        <div class="nlp-entity-list" id="nlp-sidebar-entities">
+          <span class="nlp-no-data">No entities yet</span>
+        </div>
+      </div>
+
+      <div class="nlp-stat-item">
+        <div class="nlp-stat-label">Top Keywords</div>
+        <div class="nlp-keyword-list" id="nlp-sidebar-keywords">
+          <span class="nlp-no-data">No keywords yet</span>
+        </div>
+      </div>
+
+      <div class="nlp-stat-item">
+        <div class="nlp-stat-label">Languages Detected</div>
+        <div class="nlp-keyword-list" id="nlp-sidebar-langs">
+          <span class="nlp-no-data">No data</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── CHAT AREA ── -->
+  <div class="chat-area">
+    <div id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome-emoji">🤖</div>
+        <h2>Hey! I'm NexBot</h2>
+        <p>AI chatbot with memory, personas, voice, document reading & <strong>NLP analysis</strong>. Pick a prompt or type anything!</p>
+        <div class="chips">
+          <div class="chip" onclick="quick('Explain what NLP is in simple terms')">🧠 What is NLP?</div>
+          <div class="chip" onclick="quick('Write Python code for a simple chatbot')">💻 Chatbot code</div>
+          <div class="chip" onclick="quick('How does tokenization work in NLP?')">📝 Tokenization</div>
+          <div class="chip" onclick="quick('Explain LangChain for beginners')">⛓ LangChain</div>
+          <div class="chip" onclick="quick('How do I deploy a chatbot for free?')">🚀 Deployment</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input bar -->
+    <div class="input-bar">
+      <div class="input-row">
+        <div class="input-wrap">
+          <textarea id="userInput" rows="1" placeholder="Ask me anything… (Shift+Enter = new line)"
+            onkeydown="handleKey(event)" oninput="resize(this)"></textarea>
+          <button class="icon-btn" id="mic-btn" title="Voice input" onclick="toggleMic()">🎤</button>
+        </div>
+        <button class="send-btn" id="send-btn" onclick="send()">➤</button>
+      </div>
+      <div class="hint-chips">
+        <span class="hint-chip" onclick="quick('Summarize our conversation so far')">📋 Summarize</span>
+        <span class="hint-chip" onclick="quick('Give me a Python code example')">💻 Code</span>
+        <span class="hint-chip" onclick="quick('Explain this more simply')">✏️ Simplify</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── NLP Summary Modal ── -->
+<div class="modal-overlay" id="nlp-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeNlpSummary()">✕</button>
+    <h3>🧪 NLP Conversation Summary</h3>
+    <div class="modal-body" id="nlp-modal-body">
+      <p class="modal-loading">Click the button to generate a summary…</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================================================================
+  //  CONFIGURATION
+  //  ⚠️  This is the ONLY URL in this file. It points to your
+  //      Flask backend running on your computer.
+  //      Change this if you deploy to a cloud server.
+  // ================================================================
+  const BACKEND_URL = "http://localhost:5000";   // ← Your Flask server
+
+
+  // ── Application State ──────────────────────────────────────────
+  let history    = [];           // Conversation history for memory
+  let persona    = {             // Active persona
+    id:     'assistant',
+    emoji:  '🤖',
+    name:   'General Assistant',
+    prompt: 'You are a helpful, friendly AI assistant named NexBot. Give clear, accurate, concise answers.'
+  };
+  let doc        = null;         // Uploaded document { name, content }
+  let msgCount   = 0;
+  let tokenCount = 0;
+  let isRec      = false;
+  let recognition = null;
+
+  // ── NLP Tracking State ─────────────────────────────────────────
+  let nlpSentiments = [];        // Array of polarity values across conversation
+  let nlpAllEntities = [];       // Array of { text, label } across conversation
+  let nlpAllKeywords = [];       // Array of keyword strings across conversation
+  let nlpLangsDetected = {};     // { "en": count, "fr": count, ... }
+
+
+  // ── Check if Flask backend is running ─────────────────────────
+  async function checkServer() {
+    try {
+      const res = await fetch(BACKEND_URL + "/");
+      if (res.ok) {
+        document.getElementById('status-dot').className = 'status-dot online';
+        document.getElementById('status-text').textContent = 'Backend connected';
+      } else { throw new Error(); }
+    } catch {
+      document.getElementById('status-dot').className = 'status-dot offline';
+      document.getElementById('status-text').textContent = 'Backend offline — run app.py';
+    }
+  }
+  checkServer();
+
+
+  // ── Persona ────────────────────────────────────────────────────
+  function setPersona(id, emoji, name, prompt) {
+    persona = { id, emoji, name, prompt };
+    document.querySelectorAll('.persona-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('p-' + id).classList.add('active');
+    document.getElementById('s-persona').textContent = name.split(' ')[0];
+    toast('Persona: ' + name);
+  }
+
+
+  // ── Doc Upload ─────────────────────────────────────────────────
+  function toggleDocSection() {
+    const on = document.getElementById('t-doc').checked;
+    document.getElementById('doc-section').style.display = on ? 'block' : 'none';
+    if (!on) removeDoc();
+  }
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      doc = { name: file.name, content: ev.target.result.slice(0, 8000) };
+      document.getElementById('doc-name').textContent = file.name;
+      document.getElementById('doc-badge').style.display = 'flex';
+      toast('Document loaded: ' + file.name);
+    };
+    reader.readAsText(file);
+  }
+  function removeDoc() {
+    doc = null;
+    document.getElementById('doc-badge').style.display = 'none';
+    document.getElementById('fileInput').value = '';
+  }
+
+
+  // ── Voice Input ────────────────────────────────────────────────
+  function toggleMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { toast('Voice requires Chrome browser!', 'warn'); return; }
+    if (isRec) { recognition && recognition.stop(); return; }
+    recognition = new SR();
+    recognition.lang = 'en-US'; recognition.continuous = false; recognition.interimResults = true;
+    recognition.onstart  = () => { isRec = true; document.getElementById('mic-btn').classList.add('recording'); document.getElementById('mic-btn').textContent = '⏹'; };
+    recognition.onresult = e => { document.getElementById('userInput').value = Array.from(e.results).map(r=>r[0].transcript).join(''); resize(document.getElementById('userInput')); };
+    recognition.onend    = () => { isRec = false; document.getElementById('mic-btn').classList.remove('recording'); document.getElementById('mic-btn').textContent = '🎤'; };
+    recognition.start();
+  }
+
+
+  // ── Voice Output ───────────────────────────────────────────────
+  function speak(text) {
+    if (!document.getElementById('t-voice').checked || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text.replace(/[`*#]/g,'').slice(0,500));
+    const v = window.speechSynthesis.getVoices().find(v => v.lang === 'en-US');
+    if (v) utt.voice = v;
+    window.speechSynthesis.speak(utt);
+  }
+
+
+  // ── MAIN SEND FUNCTION ─────────────────────────────────────────
+  async function send() {
+    const input = document.getElementById('userInput');
+    const text  = input.value.trim();
+    if (!text) return;
+    input.value = ''; resize(input);
+    document.getElementById('send-btn').disabled = true;
+
+    // Hide welcome screen
+    const w = document.getElementById('welcome');
+    if (w) w.style.display = 'none';
+
+    // Render user message (NLP data will be added after response)
+    const userMsgId = 'msg-user-' + Date.now();
+    addMessage('user', text, false, userMsgId);
+    msgCount++;
+    document.getElementById('s-msgs').textContent = msgCount;
+
+    // Update history (for memory feature)
+    if (document.getElementById('t-memory').checked) {
+      history.push({ role: 'user', content: text });
+      if (history.length > 20) history = history.slice(-20);
+    }
+    updateMemory();
+
+    // Show typing dots
+    const tid = 'typing-' + Date.now();
+    addTyping(tid);
+
+    try {
+      const response = await fetch(BACKEND_URL + "/api/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages:       document.getElementById('t-memory').checked
+                            ? history
+                            : [{ role: 'user', content: text }],
+          system:         persona.prompt,
+          web_context:    document.getElementById('t-web').checked,
+          document:       doc ? doc.content : null,
+          document_name:  doc ? doc.name : null
+        })
+      });
+
+      const data = await response.json();
+      removeTyping(tid);
+
+      if (data.reply) {
+        // ✅ Show bot reply
+        const botMsgId = 'msg-bot-' + Date.now();
+        addMessage('bot', data.reply, false, botMsgId);
+        if (document.getElementById('t-memory').checked) {
+          history.push({ role: 'assistant', content: data.reply });
+          if (history.length > 20) history = history.slice(-20);
+        }
+        updateMemory();
+        tokenCount += data.tokens_used || 0;
+        document.getElementById('s-tokens').textContent = tokenCount.toLocaleString();
+        speak(data.reply);
+
+        // ── Render NLP Data ──────────────────────────────────
+        if (data.nlp) {
+          // User message NLP
+          if (data.nlp.user) {
+            renderNlpBadges(userMsgId, data.nlp.user, 'user');
+            trackNlpData(data.nlp.user, 'user');
+          }
+          // Bot message NLP
+          if (data.nlp.bot) {
+            renderNlpBadges(botMsgId, data.nlp.bot, 'bot');
+            trackNlpData(data.nlp.bot, 'bot');
+          }
+          updateNlpSidebar();
+        }
+
+      } else if (data.error) {
+        addMessage('bot', '⚠️ Server error: ' + data.error, true);
+      }
+
+    } catch (err) {
+      removeTyping(tid);
+      addMessage('bot',
+        '⚠️ Cannot reach the backend server.\n\n' +
+        'Make sure Flask is running:\n' +
+        '1. Open a terminal\n' +
+        '2. Run: python app.py\n' +
+        '3. You should see: ✅ NexBot backend running on http://localhost:5000', true);
+    }
+
+    document.getElementById('send-btn').disabled = false;
+    input.focus();
+  }
+
+  function quick(text) { document.getElementById('userInput').value = text; send(); }
+
+
+  // ── NLP Badge Rendering ────────────────────────────────────────
+  function renderNlpBadges(msgId, nlpData, role) {
+    const msgEl = document.getElementById(msgId);
+    if (!msgEl) return;
+
+    const contentEl = msgEl.querySelector('.msg-content');
+    if (!contentEl) return;
+
+    const badgesDiv = document.createElement('div');
+    badgesDiv.className = 'nlp-badges';
+
+    // 1. Sentiment badge
+    if (nlpData.sentiment) {
+      const s = nlpData.sentiment;
+      const icon = s.label === 'positive' ? '🟢' : s.label === 'negative' ? '🔴' : '⚪';
+      const badge = document.createElement('span');
+      badge.className = `sentiment-badge ${s.label}`;
+      badge.innerHTML = `${icon} ${s.label}<span class="tooltip">Polarity: ${s.polarity} | Subjectivity: ${s.subjectivity}</span>`;
+      badgesDiv.appendChild(badge);
+    }
+
+    // 2. Language badge (user only)
+    if (nlpData.language && role === 'user') {
+      const lang = document.createElement('span');
+      lang.className = 'lang-badge';
+      lang.textContent = nlpData.language.language;
+      lang.title = `Confidence: ${(nlpData.language.confidence * 100).toFixed(0)}%`;
+      badgesDiv.appendChild(lang);
+    }
+
+    contentEl.appendChild(badgesDiv);
+
+    // 3. Keywords
+    if (nlpData.keywords && nlpData.keywords.length > 0) {
+      const kwDiv = document.createElement('div');
+      kwDiv.className = 'nlp-keyword-tags';
+      nlpData.keywords.forEach(kw => {
+        const tag = document.createElement('span');
+        tag.className = 'kw-tag';
+        tag.textContent = kw;
+        kwDiv.appendChild(tag);
+      });
+      contentEl.appendChild(kwDiv);
+    }
+
+    // 4. Entities (user only — bot replies often have many spurious entities)
+    if (nlpData.entities && nlpData.entities.length > 0 && role === 'user') {
+      const entDiv = document.createElement('div');
+      entDiv.className = 'nlp-entity-tags';
+      nlpData.entities.forEach(ent => {
+        const tag = document.createElement('span');
+        tag.className = 'ent-tag';
+        tag.setAttribute('data-type', ent.label);
+        tag.innerHTML = `${ent.text}<span class="tooltip">${ent.description} (${ent.label})</span>`;
+        entDiv.appendChild(tag);
+      });
+      contentEl.appendChild(entDiv);
+    }
+  }
+
+
+  // ── NLP Data Tracking (for sidebar aggregation) ────────────────
+  function trackNlpData(nlpData, role) {
+    // Sentiments
+    if (nlpData.sentiment) {
+      nlpSentiments.push(nlpData.sentiment.polarity);
+    }
+
+    // Entities
+    if (nlpData.entities) {
+      nlpData.entities.forEach(e => nlpAllEntities.push(e));
+    }
+
+    // Keywords
+    if (nlpData.keywords) {
+      nlpData.keywords.forEach(k => nlpAllKeywords.push(k));
+    }
+
+    // Language (user only)
+    if (nlpData.language && role === 'user') {
+      const lang = nlpData.language.language;
+      nlpLangsDetected[lang] = (nlpLangsDetected[lang] || 0) + 1;
+    }
+  }
+
+
+  // ── NLP Sidebar Update ─────────────────────────────────────────
+  function updateNlpSidebar() {
+    // Average sentiment
+    const avgEl = document.getElementById('nlp-avg-sentiment');
+    const avgText = document.getElementById('nlp-avg-sentiment-text');
+    if (nlpSentiments.length > 0) {
+      const avg = nlpSentiments.reduce((a,b) => a+b, 0) / nlpSentiments.length;
+      const pct = ((avg + 1) / 2) * 100; // Map -1..1 to 0..100
+      avgEl.style.width = pct + '%';
+      if (avg > 0.1) {
+        avgEl.style.background = 'var(--green)';
+        avgText.textContent = `Positive (${avg.toFixed(2)})`;
+        avgText.style.color = 'var(--green)';
+      } else if (avg < -0.1) {
+        avgEl.style.background = 'var(--red)';
+        avgText.textContent = `Negative (${avg.toFixed(2)})`;
+        avgText.style.color = 'var(--red)';
+      } else {
+        avgEl.style.background = 'var(--muted)';
+        avgText.textContent = `Neutral (${avg.toFixed(2)})`;
+        avgText.style.color = 'var(--muted)';
+      }
+    }
+
+    // Top entities (by frequency)
+    const entEl = document.getElementById('nlp-sidebar-entities');
+    if (nlpAllEntities.length > 0) {
+      const freq = {};
+      nlpAllEntities.forEach(e => {
+        const k = e.text + '|' + e.label;
+        freq[k] = (freq[k] || 0) + 1;
+      });
+      const sorted = Object.entries(freq).sort((a,b) => b[1] - a[1]).slice(0, 6);
+      entEl.innerHTML = sorted.map(([key]) => {
+        const [text, label] = key.split('|');
+        return `<span class="nlp-entity-chip" data-type="${label}">${text}</span>`;
+      }).join('');
+    }
+
+    // Top keywords (by frequency)
+    const kwEl = document.getElementById('nlp-sidebar-keywords');
+    if (nlpAllKeywords.length > 0) {
+      const freq = {};
+      nlpAllKeywords.forEach(k => { freq[k] = (freq[k] || 0) + 1; });
+      const sorted = Object.entries(freq).sort((a,b) => b[1] - a[1]).slice(0, 8);
+      kwEl.innerHTML = sorted.map(([kw]) =>
+        `<span class="nlp-keyword-chip">${kw}</span>`
+      ).join('');
+    }
+
+    // Languages
+    const langEl = document.getElementById('nlp-sidebar-langs');
+    const langEntries = Object.entries(nlpLangsDetected);
+    if (langEntries.length > 0) {
+      langEl.innerHTML = langEntries.map(([lang, count]) =>
+        `<span class="nlp-keyword-chip" style="text-transform:uppercase;font-weight:600;">${lang} (${count})</span>`
+      ).join('');
+    }
+  }
+
+
+  // ── NLP Summary Modal ──────────────────────────────────────────
+  async function openNlpSummary() {
+    const modal = document.getElementById('nlp-modal');
+    const body = document.getElementById('nlp-modal-body');
+    modal.classList.add('active');
+
+    if (history.length === 0) {
+      body.innerHTML = '<p style="color:var(--muted);">No conversation to summarize. Send some messages first!</p>';
+      return;
+    }
+
+    body.innerHTML = '<p class="modal-loading">⏳ Generating NLP summary…</p>';
+
+    try {
+      const res = await fetch(BACKEND_URL + '/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history })
+      });
+      const data = await res.json();
+
+      let html = '';
+
+      // Summary section
+      html += '<div style="margin-bottom:16px;"><strong style="color:var(--accent2);">📝 Extractive Summary</strong>';
+      html += `<div class="summary-text">${esc(data.summary || 'No summary available.')}</div></div>`;
+
+      // Conversation stats
+      html += '<div style="margin-bottom:12px;"><strong style="color:var(--accent2);">📊 Conversation Stats</strong>';
+      html += `<div style="margin-top:6px;font-size:12px;color:var(--muted);">`;
+      html += `Messages: ${history.length} | `;
+      html += `Avg Sentiment: ${nlpSentiments.length > 0 ? (nlpSentiments.reduce((a,b)=>a+b,0)/nlpSentiments.length).toFixed(3) : 'N/A'} | `;
+      html += `Unique Entities: ${new Set(nlpAllEntities.map(e=>e.text)).size} | `;
+      html += `Keywords tracked: ${nlpAllKeywords.length}`;
+      html += `</div></div>`;
+
+      // Top entities
+      if (nlpAllEntities.length > 0) {
+        html += '<div style="margin-bottom:12px;"><strong style="color:var(--accent2);">🏷️ Named Entities Found</strong>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">';
+        const seen = new Set();
+        nlpAllEntities.forEach(e => {
+          if (!seen.has(e.text)) {
+            seen.add(e.text);
+            html += `<span class="ent-tag" data-type="${e.label}" style="font-size:11px;padding:3px 10px;">${e.text} <span style="opacity:0.6;font-size:9px;">${e.label}</span></span>`;
+          }
+        });
+        html += '</div></div>';
+      }
+
+      body.innerHTML = html;
+
+    } catch (err) {
+      body.innerHTML = `<p style="color:var(--red);">⚠️ Failed to generate summary: ${err.message}</p>`;
+    }
+  }
+
+  function closeNlpSummary() {
+    document.getElementById('nlp-modal').classList.remove('active');
+  }
+  // Close modal on overlay click
+  document.getElementById('nlp-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeNlpSummary();
+  });
+
+
+  // ── DOM Helpers ────────────────────────────────────────────────
+  function addMessage(role, text, isError = false, id = null) {
+    const msgs = document.getElementById('messages');
+    const div  = document.createElement('div');
+    div.className = `msg ${role}`;
+    if (id) div.id = id;
+
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role === 'bot' ? 'bot-av' : 'user-av'}`;
+    avatar.textContent = role === 'bot' ? persona.emoji : '👤';
+
+    const content = document.createElement('div');
+    content.className = 'msg-content';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble' + (isError ? ' error-bubble' : '');
+    bubble.innerHTML = fmt(text);
+
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.innerHTML = `<span>${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>`;
+    if (role === 'bot') meta.innerHTML += `<span class="persona-tag">${persona.name}</span>`;
+
+    content.appendChild(bubble);
+    content.appendChild(meta);
+    div.appendChild(avatar);
+    div.appendChild(content);
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addTyping(id) {
+    const msgs = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg bot'; div.id = id;
+    div.innerHTML = `<div class="avatar bot-av">${persona.emoji}</div><div class="msg-content"><div class="bubble typing-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function removeTyping(id) { const e = document.getElementById(id); if(e) e.remove(); }
+
+  function updateMemory() {
+    const el = document.getElementById('memory-display');
+    const ct = document.getElementById('memory-count');
+    if (!history.length) { el.textContent = 'No messages yet.'; ct.textContent = '0 / 20 turns'; return; }
+    el.innerHTML = history.slice(-4).map(m =>
+      `<div style="margin-bottom:3px;color:${m.role==='user'?'var(--accent2)':'var(--green)'}"><strong>${m.role==='user'?'You':'Bot'}:</strong> ${m.content.slice(0,40)}…</div>`
+    ).join('');
+    ct.textContent = `${history.length} / 20 turns stored`;
+  }
+
+  function clearChat() {
+    history = []; msgCount = 0; tokenCount = 0;
+    nlpSentiments = []; nlpAllEntities = []; nlpAllKeywords = []; nlpLangsDetected = {};
+    document.getElementById('messages').innerHTML = `<div class="welcome" id="welcome"><div class="welcome-emoji">🤖</div><h2>Chat cleared!</h2><p>Start a fresh conversation.</p></div>`;
+    document.getElementById('s-msgs').textContent = '0';
+    document.getElementById('s-tokens').textContent = '0';
+    updateMemory();
+    // Reset NLP sidebar
+    document.getElementById('nlp-avg-sentiment').style.width = '50%';
+    document.getElementById('nlp-avg-sentiment').style.background = 'var(--muted)';
+    document.getElementById('nlp-avg-sentiment-text').textContent = 'No data';
+    document.getElementById('nlp-avg-sentiment-text').style.color = 'var(--muted)';
+    document.getElementById('nlp-sidebar-entities').innerHTML = '<span class="nlp-no-data">No entities yet</span>';
+    document.getElementById('nlp-sidebar-keywords').innerHTML = '<span class="nlp-no-data">No keywords yet</span>';
+    document.getElementById('nlp-sidebar-langs').innerHTML = '<span class="nlp-no-data">No data</span>';
+  }
+
+
+  // ── Text formatting (Markdown → HTML) ─────────────────────────
+  function fmt(text) {
+    text = text.replace(/```(\w+)?\n?([\s\S]*?)```/g, (_,l,c) => `<pre>${l?`<span style="color:var(--muted);font-size:10px">${l}</span><br/>`:''}  <code>${esc(c.trim())}</code></pre>`);
+    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/^#{1,3} (.+)$/gm, '<p><strong style="font-size:14px;color:var(--accent2)">$1</strong></p>');
+    text = text.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+    text = text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>');
+    return `<p>${text}</p>`;
+  }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+  function resize(el)   { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+
+  function toast(msg, type='info') {
+    const t = document.createElement('div');
+    t.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid ${type==='warn'?'var(--amber)':'var(--border)'};color:var(--text);padding:8px 18px;border-radius:10px;font-size:12px;z-index:999;opacity:0;transition:opacity 0.3s;font-family:var(--font)`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.style.opacity = '1');
+    setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2500);
+  }
+</script>
+
+</body>
+</html>
